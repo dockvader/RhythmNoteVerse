@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Rhythm Note Verse</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="app" v-cloak>
+      <main class="app-shell">
+        <section class="stage" :class="{ 'is-playing': pulse }">
+          <div class="top-bar" aria-label="MIDI control panel">
+            <div>
+              <p class="eyebrow">Rhythm Note Verse</p>
+              <h1>基礎樂理卡牌</h1>
+            </div>
+
+            <div class="controls">
+              <button class="icon-button" type="button" @click="connectMidi" :disabled="midiStatus === 'connecting'" title="連接 MIDI">
+                <span aria-hidden="true">MIDI</span>
+              </button>
+              <button class="icon-button" type="button" @click="randomCard" title="隨機抽卡">
+                <span aria-hidden="true">抽</span>
+              </button>
+              <button class="icon-button" type="button" @click="previousCard" title="上一張">
+                <span aria-hidden="true">&lsaquo;</span>
+              </button>
+              <button class="icon-button" type="button" @click="nextCard" title="下一張">
+                <span aria-hidden="true">&rsaquo;</span>
+              </button>
+              <button class="icon-button" type="button" @click="openContact" title="Contact us">
+                <svg class="mail-icon" aria-hidden="true" viewBox="0 0 24 24">
+                  <rect x="3.5" y="5.5" width="17" height="13" rx="1.5" />
+                  <path d="m4.5 7 7.5 6 7.5-6" />
+                </svg>
+              </button>
+              <a class="icon-button" href="https://github.com/dockvader/RhythmNoteVerse" target="_blank" rel="noopener noreferrer" title="GitHub repo">
+                <svg aria-hidden="true" viewBox="0 0 24 24">
+                  <path d="M12 2.5a9.5 9.5 0 0 0-3 18.52c.48.09.66-.2.66-.46v-1.6c-2.69.58-3.26-1.14-3.26-1.14-.44-1.12-1.08-1.42-1.08-1.42-.88-.6.07-.59.07-.59.98.07 1.5 1 1.5 1 .86 1.47 2.25 1.05 2.8.8.09-.63.34-1.05.62-1.29-2.15-.24-4.4-1.07-4.4-4.77 0-1.05.38-1.91 1-2.59-.1-.25-.43-1.24.1-2.56 0 0 .82-.26 2.68.99A9.17 9.17 0 0 1 12 7.06c.83 0 1.66.11 2.44.33 1.86-1.25 2.68-.99 2.68-.99.53 1.32.2 2.31.1 2.56.62.68 1 1.54 1 2.59 0 3.71-2.26 4.53-4.41 4.77.35.3.66.89.66 1.8v2.44c0 .26.18.55.67.45A9.5 9.5 0 0 0 12 2.5Z" />
+                </svg>
+              </a>
+            </div>
+          </div>
+
+          <div class="play-area">
+            <aside class="info-panel">
+              <div class="status-row">
+                <span class="status-dot" :class="midiStatus"></span>
+                <span>{{ midiLabel }}</span>
+              </div>
+
+              <label class="field">
+                <span>MIDI Note</span>
+                <input type="number" min="0" max="127" v-model.number="selectedMidi" @change="showMidiCard(selectedMidi, 'manual')" />
+              </label>
+
+              <label class="field">
+                <span>快速選卡</span>
+                <select v-model="selectedCardId" @change="showCard(selectedCardId, 'manual')">
+                  <optgroup v-for="group in groupedCards" :key="group.category" :label="group.category">
+                    <option v-for="card in group.cards" :key="card.id" :value="card.id">
+                      {{ card.label }} · {{ card.title }}
+                    </option>
+                  </optgroup>
+                </select>
+              </label>
+
+              <div class="metric-grid">
+                <div>
+                  <strong>{{ currentCard.label }}</strong>
+                  <span>目前卡片</span>
+                </div>
+                <div>
+                  <strong>{{ currentCard.solfege || currentCard.category }}</strong>
+                  <span>{{ currentCard.type === 'pitch' ? '唱名' : '類別' }}</span>
+                </div>
+              </div>
+
+              <p class="hint">按下鋼琴鍵會叫出音高卡；快速選單包含音符、休止符、譜號、升降還原與其他基礎樂理概念。</p>
+            </aside>
+
+            <section class="card-zone" aria-live="polite">
+              <button class="flip-card" type="button" @click="isFlipped = !isFlipped" :aria-label="isFlipped ? '翻回正面' : '翻到反面'">
+                <div class="card-inner" :class="{ 'is-flipped': isFlipped }">
+                  <article class="card-face card-front">
+                    <div class="fallback-card front-fallback">
+                      <span class="corner">{{ currentCard.label }}</span>
+
+                      <svg v-if="currentCard.type === 'pitch'" class="staff-notation" viewBox="0 0 360 320" role="img" :aria-label="`${currentCard.noteName} 在五線譜上的位置`">
+                        <text class="clef-mark" x="52" :y="currentCard.staff.clefY">{{ currentCard.staff.clefSymbol }}</text>
+                        <g class="staff-lines">
+                          <line v-for="line in currentCard.staff.lines" :key="line" x1="70" x2="325" :y1="line" :y2="line" />
+                        </g>
+                        <g class="ledger-lines">
+                          <line v-for="line in currentCard.staff.ledgerLines" :key="line" x1="172" x2="244" :y1="line" :y2="line" />
+                        </g>
+                        <g v-if="currentCard.staff.octaveMark" class="octave-mark" :class="currentCard.staff.octaveClass">
+                          <text x="200" :y="currentCard.staff.octaveY">{{ currentCard.staff.octaveMark }}</text>
+                        </g>
+                        <text v-if="currentCard.staff.accidental" class="accidental" x="152" :y="currentCard.staff.y + 9">
+                          {{ currentCard.staff.accidental }}
+                        </text>
+                        <g :transform="`translate(208 ${currentCard.staff.y})`">
+                          <ellipse class="note-head" cx="0" cy="0" rx="20" ry="14" transform="rotate(-18)" />
+                          <line
+                            class="note-stem"
+                            :x1="currentCard.staff.stemUp ? 17 : -17"
+                            :x2="currentCard.staff.stemUp ? 17 : -17"
+                            y1="0"
+                            :y2="currentCard.staff.stemUp ? -82 : 82"
+                          />
+                        </g>
+                      </svg>
+
+                      <div v-else class="theory-symbol" :class="currentCard.visualClass">
+                        <span>{{ currentCard.symbol }}</span>
+                      </div>
+
+                      <h2>{{ currentCard.title }}</h2>
+                      <p>{{ currentCard.subtitle }}</p>
+                    </div>
+                  </article>
+
+                  <article class="card-face card-back">
+                    <div class="fallback-card back-fallback">
+                      <span class="corner">{{ currentCard.label }}</span>
+                      <h2>{{ currentCard.title }}</h2>
+                      <dl>
+                        <div>
+                          <dt>怎麼看</dt>
+                          <dd>{{ currentCard.reading }}</dd>
+                        </div>
+                        <div>
+                          <dt>怎麼算</dt>
+                          <dd>{{ currentCard.counting }}</dd>
+                        </div>
+                        <div>
+                          <dt>記憶點</dt>
+                          <dd>{{ currentCard.memory }}</dd>
+                        </div>
+                      </dl>
+                    </div>
+                  </article>
+                </div>
+              </button>
+
+              <p class="card-caption">{{ isFlipped ? '反面解說' : '正面卡牌' }} · 點擊卡片翻面</p>
+            </section>
+
+            <aside class="recent-panel">
+              <div class="panel-heading">
+                <span>最近觸發</span>
+                <button type="button" @click="clearHistory">清除</button>
+              </div>
+              <ol>
+                <li v-for="item in history" :key="item.id" @click="showCard(item.cardId, 'history')">
+                  <span>{{ item.label }}</span>
+                  <strong>{{ item.title }}</strong>
+                </li>
+              </ol>
+            </aside>
+          </div>
+        </section>
+
+        <section id="contact" class="contact-section" ref="contactSection" aria-labelledby="contact-title">
+          <div class="contact-inner">
+            <div class="contact-copy">
+              <p class="eyebrow">Contact us</p>
+              <h2 id="contact-title">送出意見</h2>
+              <p>想新增的卡片、錯誤回報、學習建議都可以從這裡送出。</p>
+            </div>
+
+            <form
+              class="contact-form"
+              action="https://formsubmit.co/408e690fc9e23e562869007af3f69199"
+              method="POST"
+              target="contact-frame"
+              @submit="handleContactSubmit"
+            >
+              <input type="hidden" name="_subject" value="RhythmNoteVerse Feedback" />
+              <input type="hidden" name="_captcha" value="false" />
+              <input type="hidden" name="_template" value="table" />
+
+              <label class="field field--email">
+                <span>你的信箱</span>
+                <div class="input-with-icon">
+                  <input type="email" name="email" autocomplete="email" required placeholder="you@example.com" />
+                  <svg class="input-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v13A2.5 2.5 0 0 1 17.5 21h-11A2.5 2.5 0 0 1 4 18.5v-13ZM6 6v.01L12 11.5 18 6.01V6H6Zm0 12.5h12V8.58l-6 5.25-6-5.25V18.5Z" />
+                  </svg>
+                </div>
+                <span class="field-hint">請輸入有效電子信箱，例如 you@example.com</span>
+              </label>
+
+              <label class="field">
+                <span>意見內容</span>
+                <textarea name="message" rows="6" required placeholder="想新增的卡片、錯誤回報、學習建議都可以寫在這裡。"></textarea>
+              </label>
+
+              <div class="anti-spam-grid">
+                <label class="field">
+                  <span>Enter the code from the image:</span>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <canvas ref="captchaCanvas" class="captcha-canvas" width="220" height="80" role="img" aria-label="Captcha image"></canvas>
+                    <button type="button" class="captcha-refresh" @click="refreshCaptcha" title="Refresh captcha">↻</button>
+                  </div>
+                  <input v-model.trim="captchaAnswer" type="text" autocomplete="off" required placeholder="Enter code" />
+                </label>
+              </div>
+
+              <div class="contact-actions">
+                <button class="text-button primary" type="submit" :disabled="contactSending || contactSent">
+                  {{ contactSending ? '送出中' : contactSent ? '已送出' : '送出' }}
+                </button>
+              </div>
+
+              <p v-if="contactError" class="form-status error">{{ contactError }}</p>
+              <p v-if="contactSent" class="form-status">已送出，謝謝你的回饋。</p>
+            </form>
+            <iframe
+              class="contact-frame"
+              name="contact-frame"
+              title="contact form submission result"
+              @load="handleContactFrameLoad"
+            ></iframe>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script>
+      const { createApp, computed, nextTick, onMounted, ref } = Vue;
+
+      const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+      const solfegeNames = ['Do', 'Di / Ra', 'Re', 'Ri / Me', 'Mi', 'Fa', 'Fi / Se', 'Sol', 'Si / Le', 'La', 'Li / Te', 'Ti'];
+      const staffLetters = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
+      const midiToLetter = [
+        ['C', ''],
+        ['C', '#'],
+        ['D', ''],
+        ['D', '#'],
+        ['E', ''],
+        ['F', ''],
+        ['F', '#'],
+        ['G', ''],
+        ['G', '#'],
+        ['A', ''],
+        ['A', '#'],
+        ['B', ''],
+      ];
+      const staffLayout = {
+        topLine: 70,
+        bottomLine: 166,
+        spacing: 24,
+        step: 12,
+      };
+      const clefs = {
+        treble: {
+          symbol: '𝄞',
+          clefY: 118,
+          bottomLetter: 'E',
+          bottomOctave: 4,
+        },
+        bass: {
+          symbol: '𝄢',
+          clefY: 118,
+          bottomLetter: 'G',
+          bottomOctave: 2,
+        },
+      };
+      const keyboardMap = {
+        KeyA: 60,
+        KeyW: 61,
+        KeyS: 62,
+        KeyE: 63,
+        KeyD: 64,
+        KeyF: 65,
+        KeyT: 66,
+        KeyG: 67,
+        KeyY: 68,
+        KeyH: 69,
+        KeyU: 70,
+        KeyJ: 71,
+      };
+
+      const theoryCards = [
+        theory('theory-whole-note', '音符時值', '全音符', '𝅝', '四拍', '空心符頭，沒有符桿。', '通常等於四個四分音符。', '像一個空心圓，時間最長。'),
+        theory('theory-half-note', '音符時值', '二分音符', '𝅗𝅥', '兩拍', '空心符頭加符桿。', '通常等於兩個四分音符。', '全音符切一半。'),
+        theory('theory-quarter-note', '音符時值', '四分音符', '♩', '一拍', '實心符頭加符桿。', '在 4/4 拍中通常數一拍。', '大多數初學節奏的基本單位。'),
+        theory('theory-eighth-note', '音符時值', '八分音符', '♪', '半拍', '實心符頭、符桿，加一條符尾。', '兩個八分音符等於一個四分音符。', '數作 1-and。'),
+        theory('theory-sixteenth-note', '音符時值', '十六分音符', '♬', '四分之一拍', '實心符頭、符桿，加兩條符尾。', '四個十六分音符等於一個四分音符。', '數作 1-e-and-a。'),
+        theory('theory-dotted-note', '音符時值', '附點記號', '·', '延長一半', '附點寫在音符右邊。', '附點會增加原本時值的一半。', '二分音符加附點等於三拍。'),
+        theory('theory-whole-rest', '休止符', '全休止符', '𝄻', '休四拍', '掛在第四線下方的黑色長方形。', '通常休止整個小節或四拍。', '全休止符像帽子倒掛。'),
+        theory('theory-half-rest', '休止符', '二分休止符', '𝄼', '休兩拍', '坐在第三線上方的黑色長方形。', '通常休止兩拍。', '二分休止符像帽子放在線上。'),
+        theory('theory-quarter-rest', '休止符', '四分休止符', '𝄽', '休一拍', '像彎折的閃電形。', '在 4/4 拍中通常休一拍。', '看到它就安靜一拍。'),
+        theory('theory-eighth-rest', '休止符', '八分休止符', '𝄾', '休半拍', '一個鉤狀休止符。', '兩個八分休止等於一拍。', '休在 and 的位置也常見。'),
+        theory('theory-sixteenth-rest', '休止符', '十六分休止符', '𝄿', '休四分之一拍', '有兩個鉤的休止符。', '四個十六分休止等於一拍。', '比八分休止更短。'),
+        theory('theory-treble-clef', '譜號', '高音譜號', '𝄞', 'G 譜號', '環繞第二線，第二線是 G。', '常用於右手、旋律與高音域樂器。', '第二線 G 是定位點。'),
+        theory('theory-bass-clef', '譜號', '低音譜號', '𝄢', 'F 譜號', '兩點夾住第四線，第四線是 F。', '常用於左手、低音域與低音樂器。', '第四線 F 是定位點。'),
+        theory('theory-alto-clef', '譜號', '中音譜號', '𝄡', 'C 譜號', '譜號中心指向第三線，第三線是中央 C。', '常見於中提琴。', 'C 譜號指到哪裡，哪裡就是中央 C。'),
+        theory('theory-tenor-clef', '譜號', '次中音譜號', '𝄡', 'C 譜號', '譜號中心指向第四線，第四線是中央 C。', '常見於大提琴、長號等較高音域段落。', '同是 C 譜號，但中心線不同。', 'tenor-clef'),
+        theory('theory-sharp', '臨時記號', '升記號', '♯', '升高半音', '寫在音符前面，表示升高半音。', '同小節內通常持續影響同音名。', '往右邊相鄰的鍵移半音。', 'plain-symbol'),
+        theory('theory-flat', '臨時記號', '降記號', '♭', '降低半音', '寫在音符前面，表示降低半音。', '同小節內通常持續影響同音名。', '往左邊相鄰的鍵移半音。', 'plain-symbol'),
+        theory('theory-natural', '臨時記號', '還原記號', '♮', '取消升降', '取消前面的升記號或降記號。', '讓音回到原本音高。', '看到還原就回到白鍵或原位概念。', 'plain-symbol'),
+      ];
+
+      function theory(id, category, title, symbol, subtitle, reading, counting, memory, visualClass = '') {
+        return {
+          id,
+          type: 'theory',
+          category,
+          label: category,
+          title,
+          symbol,
+          subtitle,
+          reading,
+          counting,
+          memory,
+          visualClass,
+        };
+      }
+
+      function getPitchClass(midi) {
+        return ((midi % 12) + 12) % 12;
+      }
+
+      function getNoteName(midi) {
+        const name = noteNames[getPitchClass(midi)];
+        const octave = Math.floor(midi / 12) - 1;
+        return `${name}${octave}`;
+      }
+
+      function getStaffData(midi) {
+        const pitchClass = getPitchClass(midi);
+        const octave = Math.floor(midi / 12) - 1;
+        const [letter, accidental] = midiToLetter[pitchClass];
+        const clefName = midi < 60 ? 'bass' : 'treble';
+        const clef = clefs[clefName];
+        const diatonicIndex = octave * 7 + staffLetters.indexOf(letter);
+        const staffBottomIndex = clef.bottomOctave * 7 + staffLetters.indexOf(clef.bottomLetter);
+        let y = staffLayout.bottomLine - (diatonicIndex - staffBottomIndex) * staffLayout.step;
+        let octaveShift = 0;
+
+        const comfortableTop = staffLayout.topLine - staffLayout.spacing * 2;
+        const comfortableBottom = staffLayout.bottomLine + staffLayout.spacing * 2;
+
+        while (y < comfortableTop) {
+          y += staffLayout.step * 7;
+          octaveShift += 1;
+        }
+
+        while (y > comfortableBottom) {
+          y -= staffLayout.step * 7;
+          octaveShift -= 1;
+        }
+
+        const octaveMark =
+          octaveShift >= 2 ? '15ma' :
+          octaveShift === 1 ? '8va' :
+          octaveShift === -1 ? '8vb' :
+          octaveShift <= -2 ? '15mb' :
+          '';
+
+        const lines = Array.from({ length: 5 }, (_, index) => staffLayout.topLine + index * staffLayout.spacing);
+        const ledgerLines = [];
+
+        for (let line = staffLayout.bottomLine + staffLayout.spacing; line <= y + 0.1; line += staffLayout.spacing) {
+          ledgerLines.push(line);
+        }
+
+        for (let line = staffLayout.topLine - staffLayout.spacing; line >= y - 0.1; line -= staffLayout.spacing) {
+          ledgerLines.push(line);
+        }
+
+        return {
+          y,
+          clefName,
+          clefSymbol: clef.symbol,
+          clefY: clef.clefY,
+          lines,
+          ledgerLines,
+          accidental,
+          stemUp: y >= staffLayout.topLine + staffLayout.spacing * 2,
+          octaveMark,
+          octaveClass: octaveShift < 0 ? 'below' : 'above',
+          octaveY: octaveShift < 0 ? 300 : 30,
+        };
+      }
+
+      function makePitchCard(midi) {
+        const noteName = getNoteName(midi);
+        const pitchClass = getPitchClass(midi);
+        const solfege = solfegeNames[pitchClass];
+        const staff = getStaffData(midi);
+        const clefLabel = staff.clefName === 'bass' ? '低音譜表' : '高音譜表';
+        return {
+          id: `note-${midi}`,
+          type: 'pitch',
+          category: '音高與唱名',
+          midi,
+          label: noteName,
+          title: `${noteName} / ${solfege}`,
+          noteName,
+          solfege,
+          subtitle: `MIDI ${midi}`,
+          staff,
+          reading: `${noteName} 的字母音名是 ${noteNames[pitchClass]}，固定唱名是 ${solfege}。這張卡用${clefLabel}呈現；若音域太高或太低，會用 8va、15ma、8vb 或 15mb 避免堆太多加線。`,
+          counting: '音高本身不決定拍長；拍長要看它搭配的是全音符、二分音符、四分音符或其他時值。',
+          memory: 'C D E F G A B 對應固定唱名 Do Re Mi Fa Sol La Ti，升降記號會讓音高移動半音。',
+        };
+      }
+
+      function makeCards() {
+        const pitchCards = Array.from({ length: 128 }, (_, midi) => makePitchCard(midi));
+        return [...pitchCards, ...theoryCards];
+      }
+
+      createApp({
+        setup() {
+          const cards = ref(makeCards());
+          const selectedMidi = ref(60);
+          const selectedCardId = ref('note-60');
+          const isFlipped = ref(false);
+          const midiStatus = ref('idle');
+          const midiInputs = ref(0);
+          const history = ref([]);
+          const pulse = ref(false);
+          const contactStatus = ref('idle');
+          const contactSection = ref(null);
+          const captchaCode = ref('');
+          const captchaCanvas = ref(null);
+          const captchaAnswer = ref('');
+          const contactError = ref('');
+
+          const currentCard = computed(() => {
+            return cards.value.find((card) => card.id === selectedCardId.value) || cards.value[60];
+          });
+
+          const contactSent = computed(() => contactStatus.value === 'sent');
+          const contactSending = computed(() => contactStatus.value === 'sending');
+
+          const groupedCards = computed(() => {
+            const groups = [];
+            cards.value.forEach((card) => {
+              let group = groups.find((item) => item.category === card.category);
+              if (!group) {
+                group = { category: card.category, cards: [] };
+                groups.push(group);
+              }
+              group.cards.push(card);
+            });
+            return groups;
+          });
+
+          const midiLabel = computed(() => {
+            if (!('requestMIDIAccess' in navigator)) return '瀏覽器不支援 Web MIDI';
+            if (midiStatus.value === 'ready') return `MIDI 已連接 · ${midiInputs.value} 個輸入`;
+            if (midiStatus.value === 'connecting') return '正在連接 MIDI';
+            if (midiStatus.value === 'error') return 'MIDI 連接失敗';
+            return '尚未連接 MIDI';
+          });
+
+          function addHistory(card) {
+            history.value = [
+              { id: `${Date.now()}-${card.id}`, cardId: card.id, label: card.label, title: card.title },
+              ...history.value.filter((item) => item.cardId !== card.id),
+            ].slice(0, 8);
+          }
+
+          async function showCard(cardId, source = 'manual') {
+            selectedCardId.value = cardId;
+            const card = cards.value.find((item) => item.id === cardId);
+            if (card && card.type === 'pitch') selectedMidi.value = card.midi;
+            isFlipped.value = false;
+            pulse.value = false;
+            await nextTick();
+            pulse.value = source !== 'history';
+            addHistory(currentCard.value);
+            window.setTimeout(() => {
+              pulse.value = false;
+            }, 360);
+          }
+
+          function showMidiCard(midi, source = 'midi') {
+            const normalizedMidi = Math.max(0, Math.min(127, Number(midi) || 0));
+            selectedMidi.value = normalizedMidi;
+            showCard(`note-${normalizedMidi}`, source);
+          }
+
+          function handleMidiMessage(message) {
+            const [command, note, velocity] = message.data;
+            const status = command & 0xf0;
+            if (status === 0x90 && velocity > 0) {
+              showMidiCard(note, 'midi');
+            }
+          }
+
+          async function connectMidi() {
+            if (!('requestMIDIAccess' in navigator)) {
+              midiStatus.value = 'error';
+              return;
+            }
+
+            midiStatus.value = 'connecting';
+            try {
+              const midi = await navigator.requestMIDIAccess();
+              const bindInputs = () => {
+                const inputs = [...midi.inputs.values()];
+                midiInputs.value = inputs.length;
+                inputs.forEach((input) => {
+                  input.onmidimessage = handleMidiMessage;
+                });
+                midiStatus.value = 'ready';
+              };
+              bindInputs();
+              midi.onstatechange = bindInputs;
+            } catch (error) {
+              console.error(error);
+              midiStatus.value = 'error';
+            }
+          }
+
+          function previousCard() {
+            const index = cards.value.findIndex((card) => card.id === selectedCardId.value);
+            const nextIndex = (index - 1 + cards.value.length) % cards.value.length;
+            showCard(cards.value[nextIndex].id, 'manual');
+          }
+
+          function nextCard() {
+            const index = cards.value.findIndex((card) => card.id === selectedCardId.value);
+            const nextIndex = (index + 1) % cards.value.length;
+            showCard(cards.value[nextIndex].id, 'manual');
+          }
+
+          function randomCard() {
+            if (cards.value.length === 0) return;
+            let randomIndex = Math.floor(Math.random() * cards.value.length);
+            if (cards.value.length > 1 && cards.value[randomIndex].id === selectedCardId.value) {
+              randomIndex = (randomIndex + 1) % cards.value.length;
+            }
+            showCard(cards.value[randomIndex].id, 'random');
+          }
+
+          function clearHistory() {
+            history.value = [];
+          }
+
+          function openContact() {
+            contactStatus.value = 'idle';
+            contactError.value = '';
+            refreshCaptcha();
+            contactSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+
+          function refreshCaptcha() {
+            const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            captchaCode.value = Array.from({ length: 5 }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join('');
+            captchaAnswer.value = '';
+
+            // draw CAPTCHA into canvas so it's not selectable/copyable
+            nextTick(() => {
+              const canvas = captchaCanvas.value;
+              if (!canvas) return;
+              const ctx = canvas.getContext('2d');
+              const w = canvas.width = 220;
+              const h = canvas.height = 80;
+
+              // background
+              const grad = ctx.createLinearGradient(0, 0, w, h);
+              grad.addColorStop(0, 'rgba(20,18,25,0.85)');
+              grad.addColorStop(1, 'rgba(40,24,30,0.65)');
+              ctx.fillStyle = grad;
+              ctx.fillRect(0, 0, w, h);
+
+              // gentle noise background
+              for (let i = 0; i < 120; i++) {
+                ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.03})`;
+                ctx.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 1 + Math.random() * 2);
+              }
+
+              // draw random bezier line
+              ctx.strokeStyle = 'rgba(255,209,102,0.45)';
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.moveTo(10, h * (0.5 + (Math.random() - 0.5) * 0.3));
+              ctx.bezierCurveTo(w * 0.25, h * Math.random(), w * 0.6, h * Math.random(), w - 10, h * (0.5 + (Math.random() - 0.5) * 0.3));
+              ctx.stroke();
+
+              // draw characters
+              const letters = captchaCode.value.split('');
+              letters.forEach((ch, i) => {
+                const fontSize = 28 + Math.round(Math.random() * 12);
+                ctx.save();
+                const x = 20 + i * 36 + (Math.random() * 10 - 5);
+                const y = 40 + (Math.random() * 12 - 6);
+                const angle = (Math.random() * 22 - 11) * (Math.PI / 180);
+                ctx.translate(x, y);
+                ctx.rotate(angle);
+                ctx.font = `700 ${fontSize}px ui-monospace, Menlo, Consolas, monospace`;
+                ctx.fillStyle = Math.random() > 0.5 ? '#fff' : '#ffd166';
+                ctx.shadowColor = 'rgba(0,0,0,0.4)';
+                ctx.shadowBlur = 2;
+                ctx.fillText(ch, -fontSize / 2, 0);
+                ctx.restore();
+              });
+
+              // foreground dots
+              for (let i = 0; i < 50; i++) {
+                ctx.fillStyle = `rgba(255,255,255,${0.06 + Math.random() * 0.12})`;
+                ctx.beginPath();
+                ctx.arc(Math.random() * w, Math.random() * h, Math.random() * 1.8 + 0.6, 0, Math.PI * 2);
+                ctx.fill();
+              }
+            });
+          }
+
+          function handleContactSubmit(event) {
+            contactError.value = '';
+            const normalizedCode = captchaAnswer.value.toUpperCase().replace(/\s/g, '');
+            const emailInput = event.target.querySelector('[name="email"]');
+
+            if (!emailInput || !emailInput.checkValidity()) {
+              event.preventDefault();
+              contactError.value = '請輸入有效電子信箱。';
+              emailInput?.focus();
+              return;
+            }
+
+            if (normalizedCode !== captchaCode.value) {
+              event.preventDefault();
+              contactError.value = '驗證碼不正確，請重新輸入圖片中的代碼。';
+              refreshCaptcha();
+              return;
+            }
+
+            contactStatus.value = 'sending';
+          }
+
+          function handleContactFrameLoad() {
+            if (contactStatus.value !== 'sending') return;
+            contactStatus.value = 'sent';
+            refreshCaptcha();
+          }
+
+          async function loadMapping() {
+            try {
+              const response = await fetch('mapping.json', { cache: 'no-store' });
+              if (!response.ok) return;
+              const mapping = await response.json();
+              const overrides = new Map(mapping.cards.map((card) => [card.id || `note-${card.midi}`, card]));
+              cards.value = cards.value.map((card) => ({ ...card, ...(overrides.get(card.id) || {}) }));
+              showCard(selectedCardId.value, 'manual');
+            } catch (error) {
+              console.info('Using generated fallback mapping.', error);
+            }
+          }
+
+          onMounted(() => {
+            refreshCaptcha();
+            loadMapping();
+            showMidiCard(60, 'manual');
+            window.addEventListener('keydown', (event) => {
+              if (event.repeat || !(event.code in keyboardMap)) return;
+              showMidiCard(keyboardMap[event.code], 'keyboard');
+            });
+          });
+
+          return {
+            cards,
+            groupedCards,
+            selectedMidi,
+            selectedCardId,
+            currentCard,
+            isFlipped,
+            midiStatus,
+            midiLabel,
+            history,
+            pulse,
+            contactSent,
+            contactSending,
+            contactSection,
+            captchaCode,
+            captchaCanvas,
+            captchaAnswer,
+            contactError,
+            connectMidi,
+            previousCard,
+            nextCard,
+            randomCard,
+            showCard,
+            showMidiCard,
+            clearHistory,
+            openContact,
+            handleContactSubmit,
+            handleContactFrameLoad,
+            refreshCaptcha,
+          };
+        },
+      }).mount('#app');
+    </script>
+  </body>
+</html>
