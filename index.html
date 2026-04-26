@@ -85,7 +85,7 @@
                 <div class="card-inner" :class="{ 'is-flipped': isFlipped }">
                   <article class="card-face card-front">
                     <div class="fallback-card front-fallback">
-                      <span class="corner">{{ currentCard.label }}</span>
+                      <span class="corner">{{ currentCard.cornerLabel }}</span>
 
                       <svg v-if="currentCard.type === 'pitch'" class="staff-notation" viewBox="0 0 360 320" role="img" :aria-label="`${currentCard.noteName} 在五線譜上的位置`">
                         <text class="clef-mark" x="52" :y="currentCard.staff.clefY">{{ currentCard.staff.clefSymbol }}</text>
@@ -111,20 +111,39 @@
                             :y2="currentCard.staff.stemUp ? -82 : 82"
                           />
                         </g>
+                        <g v-if="currentCard.staff.altNote" class="alt-notation">
+                          <text class="accidental secondary-accidental" x="256" :y="currentCard.staff.altNote.y + 9">
+                            {{ currentCard.staff.altNote.accidental }}
+                          </text>
+                          <g :transform="`translate(292 ${currentCard.staff.altNote.y})`">
+                            <ellipse class="note-head secondary-note-head" cx="0" cy="0" rx="16" ry="11" transform="rotate(-18)" />
+                            <line
+                              class="note-stem secondary-note-stem"
+                              :x1="currentCard.staff.altNote.stemUp ? 13 : -13"
+                              :x2="currentCard.staff.altNote.stemUp ? 13 : -13"
+                              y1="0"
+                              :y2="currentCard.staff.altNote.stemUp ? -56 : 56"
+                            />
+                          </g>
+                        </g>
                       </svg>
 
                       <div v-else class="theory-symbol" :class="currentCard.visualClass">
                         <span>{{ currentCard.symbol }}</span>
                       </div>
 
-                      <h2>{{ currentCard.title }}</h2>
+                      <h2 v-if="currentCard.type === 'pitch'" class="pitch-title">
+                        <span>{{ currentCard.displayNoteLine }}</span>
+                        <span>{{ currentCard.displaySolfegeLine }}</span>
+                      </h2>
+                      <h2 v-else>{{ currentCard.title }}</h2>
                       <p>{{ currentCard.subtitle }}</p>
                     </div>
                   </article>
 
                   <article class="card-face card-back">
                     <div class="fallback-card back-fallback">
-                      <span class="corner">{{ currentCard.label }}</span>
+                      <span class="corner">{{ currentCard.cornerLabel }}</span>
                       <h2>{{ currentCard.title }}</h2>
                       <dl>
                         <div>
@@ -237,6 +256,13 @@
       const noteDisplayNames = ['C', 'C#/D♭', 'D', 'D#/E♭', 'E', 'F', 'F#/G♭', 'G', 'G#/A♭', 'A', 'A#/B♭', 'B'];
       const solfegeNames = ['Do', 'Di / Ra', 'Re', 'Ri / Me', 'Mi', 'Fa', 'Fi / Se', 'Sol', 'Si / Le', 'La', 'Li / Se', 'Si'];
       const solfegeDisplayNames = ['Do', 'Do升 Re降', 'Re', 'Re升 Mi降', 'Mi', 'Fa', 'Fa升 Sol降', 'Sol', 'Sol升 La降', 'La', 'La升 Si降', 'Si'];
+      const enharmonicPairs = {
+        1: { letter: 'D', accidental: '♭' },
+        3: { letter: 'E', accidental: '♭' },
+        6: { letter: 'G', accidental: '♭' },
+        8: { letter: 'A', accidental: '♭' },
+        10: { letter: 'B', accidental: '♭' }
+      };
       const staffLetters = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
       const midiToLetter = [
         ['C', ''],
@@ -292,7 +318,7 @@
         theory('theory-half-note', '音符時值', '二分音符', '𝅗𝅥', '兩拍', '空心符頭加符桿。', '通常等於兩個四分音符。', '全音符切一半。'),
         theory('theory-quarter-note', '音符時值', '四分音符', '♩', '一拍', '實心符頭加符桿。', '在 4/4 拍中通常數一拍。', '大多數初學節奏的基本單位。'),
         theory('theory-eighth-note', '音符時值', '八分音符', '♪', '半拍', '實心符頭、符桿，加一條符尾。', '兩個八分音符等於一個四分音符。', '數作 1-and。'),
-        theory('theory-sixteenth-note', '音符時值', '十六分音符', '♬', '四分之一拍', '實心符頭、符桿，加兩條符尾。', '四個十六分音符等於一個四分音符。', '數作 1-e-and-a。'),
+        theory('theory-sixteenth-note', '音符時值', '十六分音符', '𝅘𝅥𝅯', '四分之一拍', '實心符頭、符桿，加兩條符尾。', '四個十六分音符等於一個四分音符。', '數作 1-e-and-a。'),
         theory('theory-dotted-note', '音符時值', '附點記號', '·', '延長一半', '附點寫在音符右邊。', '附點會增加原本時值的一半。', '二分音符加附點等於三拍。'),
         theory('theory-whole-rest', '休止符', '全休止符', '𝄻', '休四拍', '掛在第四線下方的黑色長方形。', '通常休止整個小節或四拍。', '全休止符像帽子倒掛。'),
         theory('theory-half-rest', '休止符', '二分休止符', '𝄼', '休兩拍', '坐在第三線上方的黑色長方形。', '通常休止兩拍。', '二分休止符像帽子放在線上。'),
@@ -303,6 +329,22 @@
         theory('theory-bass-clef', '譜號', '低音譜號', '𝄢', 'F 譜號', '兩點夾住第四線，第四線是 F。', '常用於左手、低音域與低音樂器。', '第四線 F 是定位點。'),
         theory('theory-alto-clef', '譜號', '中音譜號', '𝄡', 'C 譜號', '譜號中心指向第三線，第三線是中央 C。', '常見於中提琴。', 'C 譜號指到哪裡，哪裡就是中央 C。'),
         theory('theory-tenor-clef', '譜號', '次中音譜號', '𝄡', 'C 譜號', '譜號中心指向第四線，第四線是中央 C。', '常見於大提琴、長號等較高音域段落。', '同是 C 譜號，但中心線不同。', 'tenor-clef'),
+        theory('theory-grave', '速度術語', '極緩板 Grave', '♩', '非常沉重、非常慢', 'Grave 是很慢而且帶重量感的速度表情。', '速度通常比 Largo 更沉穩，常帶有莊嚴感。', '看到 Grave，不只要慢，還要有重量。'),
+        theory('theory-largo', '速度術語', '最緩板 Largo', '♩', '寬廣地慢', 'Largo 是非常慢而寬廣的速度。', '通常比 Adagio 更從容，常有開闊感。', 'Largo 像把時間拉寬。'),
+        theory('theory-lento', '速度術語', '緩板 Lento', '♩', '慢而平穩', 'Lento 指明確偏慢的速度。', '比 Andante 慢，通常保持穩定拖曳感。', 'Lento 是穩穩慢下來。'),
+        theory('theory-adagio', '速度術語', '慢板 Adagio', '♩', '慢而歌唱', 'Adagio 常用於慢板樂章，帶有歌唱性。', '速度偏慢，但重點常在旋律線條與呼吸。', 'Adagio 常讓旋律唱出來。'),
+        theory('theory-andante', '速度術語', '行板 Andante', '♩', '走路速度', 'Andante 常被理解為接近步行的自然速度。', '不快不慢，適合穩定前進的脈動。', '把它想成平穩走路。'),
+        theory('theory-andantino', '速度術語', '小行板 Andantino', '♩', '比行板略動', 'Andantino 通常表示比 Andante 稍微輕巧或稍微不同的行板速度。', '實際快慢有時依時代與作曲家不同，但多半接近 Andante。', '把它當作 Andante 的小變體最安全。'),
+        theory('theory-moderato', '速度術語', '中板 Moderato', '♩', '中等速度', 'Moderato 是中等、均衡的速度。', '不特別慢也不特別快，常作為穩定基準。', 'Moderato 像節奏感很穩的中速。'),
+        theory('theory-allegretto', '速度術語', '稍快板 Allegretto', '♩', '輕快中速', 'Allegretto 比 Moderato 活潑，通常比 Allegro 稍微保守。', '常見於帶點明亮但不急促的段落。', 'Allegretto 是快板前的輕快區。'),
+        theory('theory-allegro', '速度術語', '快板 Allegro', '♩', '明亮而快', 'Allegro 是最常見的快板標示之一。', '通常代表有推進感、清晰脈動與活力。', 'Allegro 常是大家熟悉的標準快板。'),
+        theory('theory-vivace', '速度術語', '極快板 Vivace', '♩', '活潑鮮明地快', 'Vivace 強調活潑與生命力。', '通常很快，但重點也在精神飽滿與彈性。', 'Vivace 不只是快，還要有生氣。'),
+        theory('theory-presto', '速度術語', '急板 Presto', '♩', '非常快', 'Presto 表示急速推進的速度。', '比 Allegro 更快，常需要更精準的節奏控制。', 'Presto 是進入高速區的明確訊號。'),
+        theory('theory-prestissimo', '速度術語', '最急板 Prestissimo', '♩', '最快等級之一', 'Prestissimo 是極端快速的速度標示。', '通常比 Presto 更快，演奏上要求很高。', 'Prestissimo 幾乎是速度術語的頂端。'),
+        theory('theory-crescendo', '力度與表情', '漸強 Crescendo', '<', '逐漸變大聲', 'Crescendo 表示音量逐步增強。', '不是突然變大，而是沿著樂句慢慢推高。', '把聲音想成一條慢慢抬升的線。'),
+        theory('theory-diminuendo', '力度與表情', '漸弱 Diminuendo', '>', '逐漸變小聲', 'Diminuendo 表示音量逐步減弱。', '通常隨著樂句尾端慢慢收掉，不是一下子消失。', '把聲音想成一條慢慢放下的線。'),
+        theory('theory-ritardando', '力度與表情', '漸慢 Ritardando', 'rit.', '速度逐漸放慢', 'Ritardando 表示節奏逐漸減速。', '重點是漸進地慢下來，不要忽然卡住。', '像走路時一步一步放慢。'),
+        theory('theory-accelerando', '力度與表情', '漸快 Accelerando', 'accel.', '速度逐漸加快', 'Accelerando 表示節奏逐漸加速。', '要平均地把速度往前推，不要一下子衝太快。', '像小跑步一樣慢慢加速。'),
         theory('theory-sharp', '臨時記號', '升記號', '♯', '升高半音', '寫在音符前面，表示升高半音。', '同小節內通常持續影響同音名。', '往右邊相鄰的鍵移半音。', 'plain-symbol'),
         theory('theory-flat', '臨時記號', '降記號', '♭', '降低半音', '寫在音符前面，表示降低半音。', '同小節內通常持續影響同音名。', '往左邊相鄰的鍵移半音。', 'plain-symbol'),
         theory('theory-natural', '臨時記號', '還原記號', '♮', '取消升降', '取消前面的升記號或降記號。', '讓音回到原本音高。', '看到還原就回到白鍵或原位概念。', 'plain-symbol'),
@@ -314,6 +356,7 @@
           type: 'theory',
           category,
           label: category,
+          cornerLabel: category,
           title,
           symbol,
           subtitle,
@@ -340,15 +383,19 @@
         return `${name}${octave}`;
       }
 
+      function getStaffY(letter, octave, clef) {
+        const diatonicIndex = octave * 7 + staffLetters.indexOf(letter);
+        const staffBottomIndex = clef.bottomOctave * 7 + staffLetters.indexOf(clef.bottomLetter);
+        return staffLayout.bottomLine - (diatonicIndex - staffBottomIndex) * staffLayout.step;
+      }
+
       function getStaffData(midi) {
         const pitchClass = getPitchClass(midi);
         const octave = Math.floor(midi / 12) - 1;
         const [letter, accidental] = midiToLetter[pitchClass];
         const clefName = midi < 60 ? 'bass' : 'treble';
         const clef = clefs[clefName];
-        const diatonicIndex = octave * 7 + staffLetters.indexOf(letter);
-        const staffBottomIndex = clef.bottomOctave * 7 + staffLetters.indexOf(clef.bottomLetter);
-        let y = staffLayout.bottomLine - (diatonicIndex - staffBottomIndex) * staffLayout.step;
+        let y = getStaffY(letter, octave, clef);
         let octaveShift = 0;
 
         const comfortableTop = staffLayout.topLine - staffLayout.spacing * 2;
@@ -382,6 +429,23 @@
           ledgerLines.push(line);
         }
 
+        let altNote = null;
+        const enharmonic = enharmonicPairs[pitchClass];
+        if (enharmonic) {
+          let altY = getStaffY(enharmonic.letter, octave, clef);
+          while (altY < comfortableTop) {
+            altY += staffLayout.step * 7;
+          }
+          while (altY > comfortableBottom) {
+            altY -= staffLayout.step * 7;
+          }
+          altNote = {
+            y: altY,
+            accidental: enharmonic.accidental,
+            stemUp: altY >= staffLayout.topLine + staffLayout.spacing * 2
+          };
+        }
+
         return {
           y,
           clefName,
@@ -390,6 +454,7 @@
           lines,
           ledgerLines,
           accidental,
+          altNote,
           stemUp: y >= staffLayout.topLine + staffLayout.spacing * 2,
           octaveMark,
           octaveClass: octaveShift < 0 ? 'below' : 'above',
@@ -411,7 +476,10 @@
           category: '音高與唱名',
           midi,
           label: displayNoteName,
+          cornerLabel: displayNoteName,
           title: `${displayNoteName} / ${solfegeDisplay}`,
+          displayNoteLine: displayNoteName,
+          displaySolfegeLine: solfegeDisplay,
           noteName,
           solfege,
           solfegeDisplay,

@@ -592,6 +592,15 @@ h1 {
   text-anchor: middle;
 }
 
+.secondary-accidental {
+  font-size: 42px;
+}
+
+.secondary-note-head,
+.secondary-note-stem {
+  opacity: 0.9;
+}
+
 .octave-mark text {
   fill: var(--ink);
   font-size: 22px;
@@ -652,6 +661,16 @@ h1 {
   max-width: 88%;
   margin: 0;
   font-size: clamp(1.6rem, 4vw, 2.35rem);
+}
+
+.pitch-title {
+  display: grid;
+  gap: 6px;
+  line-height: 1.08;
+}
+
+.pitch-title span {
+  display: block;
 }
 
 .fallback-card p {
