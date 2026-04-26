@@ -234,7 +234,9 @@
       const { createApp, computed, nextTick, onMounted, ref } = Vue;
 
       const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-      const solfegeNames = ['Do', 'Di / Ra', 'Re', 'Ri / Me', 'Mi', 'Fa', 'Fi / Se', 'Sol', 'Si / Le', 'La', 'Li / Te', 'Ti'];
+      const noteDisplayNames = ['C', 'C#/D♭', 'D', 'D#/E♭', 'E', 'F', 'F#/G♭', 'G', 'G#/A♭', 'A', 'A#/B♭', 'B'];
+      const solfegeNames = ['Do', 'Di / Ra', 'Re', 'Ri / Me', 'Mi', 'Fa', 'Fi / Se', 'Sol', 'Si / Le', 'La', 'Li / Se', 'Si'];
+      const solfegeDisplayNames = ['Do', 'Do升 Re降', 'Re', 'Re升 Mi降', 'Mi', 'Fa', 'Fa升 Sol降', 'Sol', 'Sol升 La降', 'La', 'La升 Si降', 'Si'];
       const staffLetters = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];
       const midiToLetter = [
         ['C', ''],
@@ -332,6 +334,12 @@
         return `${name}${octave}`;
       }
 
+      function getDisplayNoteName(midi) {
+        const name = noteDisplayNames[getPitchClass(midi)];
+        const octave = Math.floor(midi / 12) - 1;
+        return `${name}${octave}`;
+      }
+
       function getStaffData(midi) {
         const pitchClass = getPitchClass(midi);
         const octave = Math.floor(midi / 12) - 1;
@@ -391,8 +399,10 @@
 
       function makePitchCard(midi) {
         const noteName = getNoteName(midi);
+        const displayNoteName = getDisplayNoteName(midi);
         const pitchClass = getPitchClass(midi);
         const solfege = solfegeNames[pitchClass];
+        const solfegeDisplay = solfegeDisplayNames[pitchClass];
         const staff = getStaffData(midi);
         const clefLabel = staff.clefName === 'bass' ? '低音譜表' : '高音譜表';
         return {
@@ -400,15 +410,16 @@
           type: 'pitch',
           category: '音高與唱名',
           midi,
-          label: noteName,
-          title: `${noteName} / ${solfege}`,
+          label: displayNoteName,
+          title: `${displayNoteName} / ${solfegeDisplay}`,
           noteName,
           solfege,
+          solfegeDisplay,
           subtitle: `MIDI ${midi}`,
           staff,
-          reading: `${noteName} 的字母音名是 ${noteNames[pitchClass]}，固定唱名是 ${solfege}。這張卡用${clefLabel}呈現；若音域太高或太低，會用 8va、15ma、8vb 或 15mb 避免堆太多加線。`,
+          reading: `${noteName} 的字母音名寫作 ${noteDisplayNames[pitchClass]}，唱名顯示為 ${solfegeDisplay}。這張卡用${clefLabel}呈現；若音域太高或太低，會用 8va、15ma、8vb 或 15mb 避免堆太多加線。`,
           counting: '音高本身不決定拍長；拍長要看它搭配的是全音符、二分音符、四分音符或其他時值。',
-          memory: 'C D E F G A B 對應固定唱名 Do Re Mi Fa Sol La Ti，升降記號會讓音高移動半音。',
+          memory: 'C D E F G A B 對應固定唱名 Do Re Mi Fa Sol La Si，升降記號會讓音高移動半音。',
         };
       }
 
