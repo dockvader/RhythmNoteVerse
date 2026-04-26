@@ -20,6 +20,9 @@
               <button class="icon-button" type="button" @click="connectMidi" :disabled="midiStatus === 'connecting'" title="連接 MIDI">
                 <span aria-hidden="true">MIDI</span>
               </button>
+              <button class="icon-button" :class="{ 'is-active': soundEnabled }" type="button" @click="toggleSound" :title="soundEnabled ? 'Sound Off' : 'Sound On'">
+                <span aria-hidden="true">{{ soundEnabled ? 'SND' : 'MUTE' }}</span>
+              </button>
               <button class="icon-button" type="button" @click="randomCard" title="隨機抽卡">
                 <span aria-hidden="true">抽</span>
               </button>
@@ -60,7 +63,7 @@
                 <select v-model="selectedCardId" @change="showCard(selectedCardId, 'manual')">
                   <optgroup v-for="group in groupedCards" :key="group.category" :label="group.category">
                     <option v-for="card in group.cards" :key="card.id" :value="card.id">
-                      {{ card.label }} · {{ card.title }}
+                      {{ card.optionLabel || `${card.label} - ${card.title}` }}
                     </option>
                   </optgroup>
                 </select>
@@ -85,44 +88,33 @@
                 <div class="card-inner" :class="{ 'is-flipped': isFlipped }">
                   <article class="card-face card-front">
                     <div class="fallback-card front-fallback">
-                      <span class="corner">{{ currentCard.cornerLabel }}</span>
+                      <span class="corner" :class="{ 'corner--pitch': currentCard.type === 'pitch' }">{{ currentCard.cornerLabel }}</span>
 
                       <svg v-if="currentCard.type === 'pitch'" class="staff-notation" viewBox="0 0 360 320" role="img" :aria-label="`${currentCard.noteName} 在五線譜上的位置`">
                         <text class="clef-mark" x="52" :y="currentCard.staff.clefY">{{ currentCard.staff.clefSymbol }}</text>
                         <g class="staff-lines">
-                          <line v-for="line in currentCard.staff.lines" :key="line" x1="70" x2="325" :y1="line" :y2="line" />
-                        </g>
-                        <g class="ledger-lines">
-                          <line v-for="line in currentCard.staff.ledgerLines" :key="line" x1="172" x2="244" :y1="line" :y2="line" />
+                          <g v-for="group in currentCard.staff.staffGroups" :key="group.key">
+                            <line v-for="line in currentCard.staff.lines" :key="`${group.key}-${line}`" :x1="group.x1" :x2="group.x2" :y1="line" :y2="line" />
+                          </g>
                         </g>
                         <g v-if="currentCard.staff.octaveMark" class="octave-mark" :class="currentCard.staff.octaveClass">
-                          <text x="200" :y="currentCard.staff.octaveY">{{ currentCard.staff.octaveMark }}</text>
+                          <text :x="currentCard.staff.octaveX" :y="currentCard.staff.octaveY">{{ currentCard.staff.octaveMark }}</text>
                         </g>
-                        <text v-if="currentCard.staff.accidental" class="accidental" x="152" :y="currentCard.staff.y + 9">
-                          {{ currentCard.staff.accidental }}
-                        </text>
-                        <g :transform="`translate(208 ${currentCard.staff.y})`">
-                          <ellipse class="note-head" cx="0" cy="0" rx="20" ry="14" transform="rotate(-18)" />
-                          <line
-                            class="note-stem"
-                            :x1="currentCard.staff.stemUp ? 17 : -17"
-                            :x2="currentCard.staff.stemUp ? 17 : -17"
-                            y1="0"
-                            :y2="currentCard.staff.stemUp ? -82 : 82"
-                          />
-                        </g>
-                        <g v-if="currentCard.staff.altNote" class="alt-notation">
-                          <text class="accidental secondary-accidental" x="256" :y="currentCard.staff.altNote.y + 9">
-                            {{ currentCard.staff.altNote.accidental }}
+                        <g v-for="group in currentCard.staff.noteGroups" :key="group.key" class="note-group">
+                          <g class="ledger-lines">
+                            <line v-for="line in group.ledgerLines" :key="`${group.key}-ledger-${line}`" :x1="group.noteX - 36" :x2="group.noteX + 36" :y1="line" :y2="line" />
+                          </g>
+                          <text v-if="group.accidental" class="accidental" :x="group.noteX - 48" :y="group.y + 9">
+                            {{ group.accidental }}
                           </text>
-                          <g :transform="`translate(292 ${currentCard.staff.altNote.y})`">
-                            <ellipse class="note-head secondary-note-head" cx="0" cy="0" rx="16" ry="11" transform="rotate(-18)" />
+                          <g :transform="`translate(${group.noteX} ${group.y})`">
+                            <ellipse class="note-head" cx="0" cy="0" rx="20" ry="14" transform="rotate(-18)" />
                             <line
-                              class="note-stem secondary-note-stem"
-                              :x1="currentCard.staff.altNote.stemUp ? 13 : -13"
-                              :x2="currentCard.staff.altNote.stemUp ? 13 : -13"
+                              class="note-stem"
+                              :x1="group.stemUp ? 17 : -17"
+                              :x2="group.stemUp ? 17 : -17"
                               y1="0"
-                              :y2="currentCard.staff.altNote.stemUp ? -56 : 56"
+                              :y2="group.stemUp ? -82 : 82"
                             />
                           </g>
                         </g>
@@ -132,9 +124,9 @@
                         <span>{{ currentCard.symbol }}</span>
                       </div>
 
-                      <h2 v-if="currentCard.type === 'pitch'" class="pitch-title">
-                        <span>{{ currentCard.displayNoteLine }}</span>
-                        <span>{{ currentCard.displaySolfegeLine }}</span>
+                      <h2 v-if="currentCard.type === 'pitch'" class="pitch-title" :class="{ 'pitch-title--accidental': currentCard.isAccidentalPitch }">
+                        <span class="pitch-line pitch-line--note">{{ currentCard.displayNoteLine }}</span>
+                        <span class="pitch-line pitch-line--solfege">{{ currentCard.displaySolfegeLine }}</span>
                       </h2>
                       <h2 v-else>{{ currentCard.title }}</h2>
                       <p>{{ currentCard.subtitle }}</p>
@@ -314,37 +306,43 @@
       };
 
       const theoryCards = [
-        theory('theory-whole-note', '音符時值', '全音符', '𝅝', '四拍', '空心符頭，沒有符桿。', '通常等於四個四分音符。', '像一個空心圓，時間最長。'),
-        theory('theory-half-note', '音符時值', '二分音符', '𝅗𝅥', '兩拍', '空心符頭加符桿。', '通常等於兩個四分音符。', '全音符切一半。'),
-        theory('theory-quarter-note', '音符時值', '四分音符', '♩', '一拍', '實心符頭加符桿。', '在 4/4 拍中通常數一拍。', '大多數初學節奏的基本單位。'),
-        theory('theory-eighth-note', '音符時值', '八分音符', '♪', '半拍', '實心符頭、符桿，加一條符尾。', '兩個八分音符等於一個四分音符。', '數作 1-and。'),
-        theory('theory-sixteenth-note', '音符時值', '十六分音符', '𝅘𝅥𝅯', '四分之一拍', '實心符頭、符桿，加兩條符尾。', '四個十六分音符等於一個四分音符。', '數作 1-e-and-a。'),
-        theory('theory-dotted-note', '音符時值', '附點記號', '·', '延長一半', '附點寫在音符右邊。', '附點會增加原本時值的一半。', '二分音符加附點等於三拍。'),
-        theory('theory-whole-rest', '休止符', '全休止符', '𝄻', '休四拍', '掛在第四線下方的黑色長方形。', '通常休止整個小節或四拍。', '全休止符像帽子倒掛。'),
-        theory('theory-half-rest', '休止符', '二分休止符', '𝄼', '休兩拍', '坐在第三線上方的黑色長方形。', '通常休止兩拍。', '二分休止符像帽子放在線上。'),
-        theory('theory-quarter-rest', '休止符', '四分休止符', '𝄽', '休一拍', '像彎折的閃電形。', '在 4/4 拍中通常休一拍。', '看到它就安靜一拍。'),
-        theory('theory-eighth-rest', '休止符', '八分休止符', '𝄾', '休半拍', '一個鉤狀休止符。', '兩個八分休止等於一拍。', '休在 and 的位置也常見。'),
-        theory('theory-sixteenth-rest', '休止符', '十六分休止符', '𝄿', '休四分之一拍', '有兩個鉤的休止符。', '四個十六分休止等於一拍。', '比八分休止更短。'),
-        theory('theory-treble-clef', '譜號', '高音譜號', '𝄞', 'G 譜號', '環繞第二線，第二線是 G。', '常用於右手、旋律與高音域樂器。', '第二線 G 是定位點。'),
-        theory('theory-bass-clef', '譜號', '低音譜號', '𝄢', 'F 譜號', '兩點夾住第四線，第四線是 F。', '常用於左手、低音域與低音樂器。', '第四線 F 是定位點。'),
-        theory('theory-alto-clef', '譜號', '中音譜號', '𝄡', 'C 譜號', '譜號中心指向第三線，第三線是中央 C。', '常見於中提琴。', 'C 譜號指到哪裡，哪裡就是中央 C。'),
-        theory('theory-tenor-clef', '譜號', '次中音譜號', '𝄡', 'C 譜號', '譜號中心指向第四線，第四線是中央 C。', '常見於大提琴、長號等較高音域段落。', '同是 C 譜號，但中心線不同。', 'tenor-clef'),
-        theory('theory-grave', '速度術語', '極緩板 Grave', '♩', '非常沉重、非常慢', 'Grave 是很慢而且帶重量感的速度表情。', '速度通常比 Largo 更沉穩，常帶有莊嚴感。', '看到 Grave，不只要慢，還要有重量。'),
-        theory('theory-largo', '速度術語', '最緩板 Largo', '♩', '寬廣地慢', 'Largo 是非常慢而寬廣的速度。', '通常比 Adagio 更從容，常有開闊感。', 'Largo 像把時間拉寬。'),
-        theory('theory-lento', '速度術語', '緩板 Lento', '♩', '慢而平穩', 'Lento 指明確偏慢的速度。', '比 Andante 慢，通常保持穩定拖曳感。', 'Lento 是穩穩慢下來。'),
-        theory('theory-adagio', '速度術語', '慢板 Adagio', '♩', '慢而歌唱', 'Adagio 常用於慢板樂章，帶有歌唱性。', '速度偏慢，但重點常在旋律線條與呼吸。', 'Adagio 常讓旋律唱出來。'),
-        theory('theory-andante', '速度術語', '行板 Andante', '♩', '走路速度', 'Andante 常被理解為接近步行的自然速度。', '不快不慢，適合穩定前進的脈動。', '把它想成平穩走路。'),
-        theory('theory-andantino', '速度術語', '小行板 Andantino', '♩', '比行板略動', 'Andantino 通常表示比 Andante 稍微輕巧或稍微不同的行板速度。', '實際快慢有時依時代與作曲家不同，但多半接近 Andante。', '把它當作 Andante 的小變體最安全。'),
-        theory('theory-moderato', '速度術語', '中板 Moderato', '♩', '中等速度', 'Moderato 是中等、均衡的速度。', '不特別慢也不特別快，常作為穩定基準。', 'Moderato 像節奏感很穩的中速。'),
-        theory('theory-allegretto', '速度術語', '稍快板 Allegretto', '♩', '輕快中速', 'Allegretto 比 Moderato 活潑，通常比 Allegro 稍微保守。', '常見於帶點明亮但不急促的段落。', 'Allegretto 是快板前的輕快區。'),
-        theory('theory-allegro', '速度術語', '快板 Allegro', '♩', '明亮而快', 'Allegro 是最常見的快板標示之一。', '通常代表有推進感、清晰脈動與活力。', 'Allegro 常是大家熟悉的標準快板。'),
-        theory('theory-vivace', '速度術語', '極快板 Vivace', '♩', '活潑鮮明地快', 'Vivace 強調活潑與生命力。', '通常很快，但重點也在精神飽滿與彈性。', 'Vivace 不只是快，還要有生氣。'),
-        theory('theory-presto', '速度術語', '急板 Presto', '♩', '非常快', 'Presto 表示急速推進的速度。', '比 Allegro 更快，常需要更精準的節奏控制。', 'Presto 是進入高速區的明確訊號。'),
-        theory('theory-prestissimo', '速度術語', '最急板 Prestissimo', '♩', '最快等級之一', 'Prestissimo 是極端快速的速度標示。', '通常比 Presto 更快，演奏上要求很高。', 'Prestissimo 幾乎是速度術語的頂端。'),
-        theory('theory-crescendo', '力度與表情', '漸強 Crescendo', '<', '逐漸變大聲', 'Crescendo 表示音量逐步增強。', '不是突然變大，而是沿著樂句慢慢推高。', '把聲音想成一條慢慢抬升的線。'),
-        theory('theory-diminuendo', '力度與表情', '漸弱 Diminuendo', '>', '逐漸變小聲', 'Diminuendo 表示音量逐步減弱。', '通常隨著樂句尾端慢慢收掉，不是一下子消失。', '把聲音想成一條慢慢放下的線。'),
-        theory('theory-ritardando', '力度與表情', '漸慢 Ritardando', 'rit.', '速度逐漸放慢', 'Ritardando 表示節奏逐漸減速。', '重點是漸進地慢下來，不要忽然卡住。', '像走路時一步一步放慢。'),
-        theory('theory-accelerando', '力度與表情', '漸快 Accelerando', 'accel.', '速度逐漸加快', 'Accelerando 表示節奏逐漸加速。', '要平均地把速度往前推，不要一下子衝太快。', '像小跑步一樣慢慢加速。'),
+        theory('theory-whole-note', '音符時值', '全音符', '𝅝', '四拍', '空心符頭，沒有符桿。', '通常等於四個四分音符。', '像一個空心圓，時間最長。', 'plain-symbol'),
+        theory('theory-half-note', '音符時值', '二分音符', '𝅗𝅥', '兩拍', '空心符頭加符桿。', '通常等於兩個四分音符。', '全音符切一半。', 'plain-symbol'),
+        theory('theory-quarter-note', '音符時值', '四分音符', '♩', '一拍', '實心符頭加符桿。', '在 4/4 拍中通常數一拍。', '大多數初學節奏的基本單位。', 'plain-symbol'),
+        theory('theory-eighth-note', '音符時值', '八分音符', '♪', '半拍', '實心符頭、符桿，加一條符尾。', '兩個八分音符等於一個四分音符。', '數作 1-and。', 'plain-symbol'),
+        theory('theory-sixteenth-note', '音符時值', '十六分音符', '𝅘𝅥𝅯', '四分之一拍', '實心符頭、符桿，加兩條符尾。', '四個十六分音符等於一個四分音符。', '數作 1-e-and-a。', 'plain-symbol'),
+        theory('theory-dotted-note', '音符時值', '附點記號', '·', '延長一半', '附點寫在音符右邊。', '附點會增加原本時值的一半。', '二分音符加附點等於三拍。', 'plain-symbol'),
+        theory('theory-whole-rest', '休止符', '全休止符', '𝄻', '休四拍', '掛在第四線下方的黑色長方形。', '通常休止整個小節或四拍。', '全休止符像帽子倒掛。', 'plain-symbol'),
+        theory('theory-half-rest', '休止符', '二分休止符', '𝄼', '休兩拍', '坐在第三線上方的黑色長方形。', '通常休止兩拍。', '二分休止符像帽子放在線上。', 'plain-symbol'),
+        theory('theory-quarter-rest', '休止符', '四分休止符', '𝄽', '休一拍', '像彎折的閃電形。', '在 4/4 拍中通常休一拍。', '看到它就安靜一拍。', 'plain-symbol'),
+        theory('theory-eighth-rest', '休止符', '八分休止符', '𝄾', '休半拍', '一個鉤狀休止符。', '兩個八分休止等於一拍。', '休在 and 的位置也常見。', 'plain-symbol'),
+        theory('theory-sixteenth-rest', '休止符', '十六分休止符', '𝄿', '休四分之一拍', '有兩個鉤的休止符。', '四個十六分休止等於一拍。', '比八分休止更短。', 'plain-symbol'),
+        theory('theory-treble-clef', '譜號', '高音譜號', '𝄞', 'G 譜號', '環繞第二線，第二線是 G。', '常用於右手、旋律與高音域樂器。', '第二線 G 是定位點。', 'plain-symbol clef-symbol'),
+        theory('theory-bass-clef', '譜號', '低音譜號', '𝄢', 'F 譜號', '兩點夾住第四線，第四線是 F。', '常用於左手、低音域與低音樂器。', '第四線 F 是定位點。', 'plain-symbol clef-symbol'),
+        theory('theory-alto-clef', '譜號', '中音譜號', '𝄡', 'C 譜號', '譜號中心指向第三線，第三線是中央 C。', '常見於中提琴。', 'C 譜號指到哪裡，哪裡就是中央 C。', 'plain-symbol clef-symbol'),
+        theory('theory-tenor-clef', '譜號', '次中音譜號', '𝄡', 'C 譜號', '譜號中心指向第四線，第四線是中央 C。', '常見於大提琴、長號等較高音域段落。', '同是 C 譜號，但中心線不同。', 'plain-symbol clef-symbol tenor-clef'),
+        theory('theory-grave', '速度術語', '極緩板 Grave', 'Grave', '非常沉重、非常慢', 'Grave 是很慢而且帶重量感的速度表情。', '速度通常比 Largo 更沉穩，常帶有莊嚴感。', '看到 Grave，不只要慢，還要有重量。', 'plain-symbol term-symbol'),
+        theory('theory-largo', '速度術語', '最緩板 Largo', 'Largo', '寬廣地慢', 'Largo 是非常慢而寬廣的速度。', '通常比 Adagio 更從容，常有開闊感。', 'Largo 像把時間拉寬。', 'plain-symbol term-symbol'),
+        theory('theory-lento', '速度術語', '緩板 Lento', 'Lento', '慢而平穩', 'Lento 指明確偏慢的速度。', '比 Andante 慢，通常保持穩定拖曳感。', 'Lento 是穩穩慢下來。', 'plain-symbol term-symbol'),
+        theory('theory-adagio', '速度術語', '慢板 Adagio', 'Adagio', '慢而歌唱', 'Adagio 常用於慢板樂章，帶有歌唱性。', '速度偏慢，但重點常在旋律線條與呼吸。', 'Adagio 常讓旋律唱出來。', 'plain-symbol term-symbol'),
+        theory('theory-andante', '速度術語', '行板 Andante', 'Andante', '走路速度', 'Andante 常被理解為接近步行的自然速度。', '不快不慢，適合穩定前進的脈動。', '把它想成平穩走路。', 'plain-symbol term-symbol'),
+        theory('theory-andantino', '速度術語', '小行板 Andantino', 'Andantino', '比行板略動', 'Andantino 通常表示比 Andante 稍微輕巧或稍微不同的行板速度。', '實際快慢有時依時代與作曲家不同，但多半接近 Andante。', '把它當作 Andante 的小變體最安全。', 'plain-symbol term-symbol'),
+        theory('theory-moderato', '速度術語', '中板 Moderato', 'Moderato', '中等速度', 'Moderato 是中等、均衡的速度。', '不特別慢也不特別快，常作為穩定基準。', 'Moderato 像節奏感很穩的中速。', 'plain-symbol term-symbol'),
+        theory('theory-allegretto', '速度術語', '稍快板 Allegretto', 'Allegretto', '輕快中速', 'Allegretto 比 Moderato 活潑，通常比 Allegro 稍微保守。', '常見於帶點明亮但不急促的段落。', 'Allegretto 是快板前的輕快區。', 'plain-symbol term-symbol'),
+        theory('theory-allegro', '速度術語', '快板 Allegro', 'Allegro', '明亮而快', 'Allegro 是最常見的快板標示之一。', '通常代表有推進感、清晰脈動與活力。', 'Allegro 常是大家熟悉的標準快板。', 'plain-symbol term-symbol'),
+        theory('theory-vivace', '速度術語', '極快板 Vivace', 'Vivace', '活潑鮮明地快', 'Vivace 強調活潑與生命力。', '通常很快，但重點也在精神飽滿與彈性。', 'Vivace 不只是快，還要有生氣。', 'plain-symbol term-symbol'),
+        theory('theory-presto', '速度術語', '急板 Presto', 'Presto', '非常快', 'Presto 表示急速推進的速度。', '比 Allegro 更快，常需要更精準的節奏控制。', 'Presto 是進入高速區的明確訊號。', 'plain-symbol term-symbol'),
+        theory('theory-prestissimo', '速度術語', '最急板 Prestissimo', 'Prestissimo', '最快等級之一', 'Prestissimo 是極端快速的速度標示。', '通常比 Presto 更快，演奏上要求很高。', 'Prestissimo 幾乎是速度術語的頂端。', 'plain-symbol term-symbol'),
+        theory('theory-crescendo', '力度與表情', '漸強 Crescendo', 'cresc.', '逐漸變大聲', 'Crescendo 表示音量逐步增強。', '不是突然變大，而是沿著樂句慢慢推高。', '把聲音想成一條慢慢抬升的線。', 'plain-symbol term-symbol'),
+        theory('theory-diminuendo', '力度與表情', '漸弱 Diminuendo', 'dim.', '逐漸變小聲', 'Diminuendo 表示音量逐步減弱。', '通常隨著樂句尾端慢慢收掉，不是一下子消失。', '把聲音想成一條慢慢放下的線。', 'plain-symbol term-symbol'),
+        theory('theory-ritardando', '力度與表情', '漸慢 Ritardando', 'rit.', '速度逐漸放慢', 'Ritardando 表示節奏逐漸減速。', '重點是漸進地慢下來，不要忽然卡住。', '像走路時一步一步放慢。', 'plain-symbol term-symbol'),
+        theory('theory-accelerando', '力度與表情', '漸快 Accelerando', 'accel.', '速度逐漸加快', 'Accelerando 表示節奏逐漸加速。', '要平均地把速度往前推，不要一下子衝太快。', '像小跑步一樣慢慢加速。', 'plain-symbol term-symbol'),
+        theory('theory-pp', '力度與表情', 'pp Pianissimo', 'pp', '很弱', 'pp 表示 very soft，也就是很弱。', '通常要保持控制，不只是小聲，還要穩定。', 'pp 是比 p 更輕、更遠的聲音。', 'plain-symbol dynamic-symbol'),
+        theory('theory-p', '力度與表情', 'p Piano', 'p', '弱', 'p 表示 soft，也就是弱。', '比中強更柔和，但還是要保持音色。', 'p 像說話時壓低音量。', 'plain-symbol dynamic-symbol'),
+        theory('theory-mp', '力度與表情', 'mp Mezzo Piano', 'mp', '中弱', 'mp 表示 mezzo piano，也就是中弱。', '它常作為比較保守、自然的起始力度。', 'mp 介於弱與中等之間。', 'plain-symbol dynamic-symbol'),
+        theory('theory-mf', '力度與表情', 'mf Mezzo Forte', 'mf', '中強', 'mf 表示 mezzo forte，也就是中強。', '常見於自然、穩定、清楚的標準力度。', 'mf 可以想成不壓抑也不爆衝。', 'plain-symbol dynamic-symbol'),
+        theory('theory-f', '力度與表情', 'f Forte', 'f', '強', 'f 表示 forte，也就是強。', '不只是大聲，還要有支撐和方向。', 'f 是明確、外放的聲音。', 'plain-symbol dynamic-symbol'),
+        theory('theory-ff', '力度與表情', 'ff Fortissimo', 'ff', '很強', 'ff 表示 very loud，也就是很強。', '通常需要更大的能量，但仍要避免失控。', 'ff 是強烈而完整的音量。', 'plain-symbol dynamic-symbol'),
         theory('theory-sharp', '臨時記號', '升記號', '♯', '升高半音', '寫在音符前面，表示升高半音。', '同小節內通常持續影響同音名。', '往右邊相鄰的鍵移半音。', 'plain-symbol'),
         theory('theory-flat', '臨時記號', '降記號', '♭', '降低半音', '寫在音符前面，表示降低半音。', '同小節內通常持續影響同音名。', '往左邊相鄰的鍵移半音。', 'plain-symbol'),
         theory('theory-natural', '臨時記號', '還原記號', '♮', '取消升降', '取消前面的升記號或降記號。', '讓音回到原本音高。', '看到還原就回到白鍵或原位概念。', 'plain-symbol'),
@@ -383,10 +381,40 @@
         return `${name}${octave}`;
       }
 
+      function getCornerPitchLabel(displayNoteName) {
+        return displayNoteName.replace('/', '/\n');
+      }
+
+      function getOptionPitchLabel(displayNoteName, solfegeDisplay) {
+        return `${displayNoteName} - ${solfegeDisplay}`;
+      }
+
+      function getDisplayNoteLine(displayNoteName) {
+        return displayNoteName.replace('/', ' / ');
+      }
+
+      function getDisplaySolfegeLine(solfegeDisplay) {
+        return solfegeDisplay.replace(' ', ' / ');
+      }
+
       function getStaffY(letter, octave, clef) {
         const diatonicIndex = octave * 7 + staffLetters.indexOf(letter);
         const staffBottomIndex = clef.bottomOctave * 7 + staffLetters.indexOf(clef.bottomLetter);
         return staffLayout.bottomLine - (diatonicIndex - staffBottomIndex) * staffLayout.step;
+      }
+
+      function buildLedgerLines(y) {
+        const ledgerLines = [];
+
+        for (let line = staffLayout.bottomLine + staffLayout.spacing; line <= y + 0.1; line += staffLayout.spacing) {
+          ledgerLines.push(line);
+        }
+
+        for (let line = staffLayout.topLine - staffLayout.spacing; line >= y - 0.1; line -= staffLayout.spacing) {
+          ledgerLines.push(line);
+        }
+
+        return ledgerLines;
       }
 
       function getStaffData(midi) {
@@ -419,15 +447,7 @@
           '';
 
         const lines = Array.from({ length: 5 }, (_, index) => staffLayout.topLine + index * staffLayout.spacing);
-        const ledgerLines = [];
-
-        for (let line = staffLayout.bottomLine + staffLayout.spacing; line <= y + 0.1; line += staffLayout.spacing) {
-          ledgerLines.push(line);
-        }
-
-        for (let line = staffLayout.topLine - staffLayout.spacing; line >= y - 0.1; line -= staffLayout.spacing) {
-          ledgerLines.push(line);
-        }
+        const ledgerLines = buildLedgerLines(y);
 
         let altNote = null;
         const enharmonic = enharmonicPairs[pitchClass];
@@ -442,22 +462,60 @@
           altNote = {
             y: altY,
             accidental: enharmonic.accidental,
-            stemUp: altY >= staffLayout.topLine + staffLayout.spacing * 2
+            stemUp: altY >= staffLayout.topLine + staffLayout.spacing * 2,
+            ledgerLines: buildLedgerLines(altY),
           };
         }
 
+        const noteGroups = altNote
+          ? [
+              {
+                key: 'sharp',
+                noteX: 168,
+                y,
+                accidental,
+                stemUp: y >= staffLayout.topLine + staffLayout.spacing * 2,
+                ledgerLines,
+              },
+              {
+                key: 'flat',
+                noteX: 286,
+                y: altNote.y,
+                accidental: altNote.accidental,
+                stemUp: altNote.stemUp,
+                ledgerLines: altNote.ledgerLines,
+              },
+            ]
+          : [
+              {
+                key: 'single',
+                noteX: 208,
+                y,
+                accidental,
+                stemUp: y >= staffLayout.topLine + staffLayout.spacing * 2,
+                ledgerLines,
+              },
+            ];
+
+        const staffGroups = altNote
+          ? [
+              { key: 'left', x1: 92, x2: 214 },
+              { key: 'right', x1: 228, x2: 338 },
+            ]
+          : [
+              { key: 'full', x1: 70, x2: 325 },
+            ];
+
         return {
-          y,
           clefName,
           clefSymbol: clef.symbol,
           clefY: clef.clefY,
           lines,
-          ledgerLines,
-          accidental,
-          altNote,
-          stemUp: y >= staffLayout.topLine + staffLayout.spacing * 2,
+          noteGroups,
+          staffGroups,
           octaveMark,
           octaveClass: octaveShift < 0 ? 'below' : 'above',
+          octaveX: altNote ? 226 : 200,
           octaveY: octaveShift < 0 ? 300 : 30,
         };
       }
@@ -476,10 +534,12 @@
           category: '音高與唱名',
           midi,
           label: displayNoteName,
-          cornerLabel: displayNoteName,
+          optionLabel: getOptionPitchLabel(displayNoteName, solfegeDisplay),
+          cornerLabel: getCornerPitchLabel(displayNoteName),
           title: `${displayNoteName} / ${solfegeDisplay}`,
-          displayNoteLine: displayNoteName,
-          displaySolfegeLine: solfegeDisplay,
+          displayNoteLine: getDisplayNoteLine(displayNoteName),
+          displaySolfegeLine: getDisplaySolfegeLine(solfegeDisplay),
+          isAccidentalPitch: displayNoteName.includes('/'),
           noteName,
           solfege,
           solfegeDisplay,
@@ -506,12 +566,17 @@
           const midiInputs = ref(0);
           const history = ref([]);
           const pulse = ref(false);
+          const soundEnabled = ref(false);
           const contactStatus = ref('idle');
           const contactSection = ref(null);
           const captchaCode = ref('');
           const captchaCanvas = ref(null);
           const captchaAnswer = ref('');
           const contactError = ref('');
+          const activeKeyboardNotes = new Map();
+
+          let audioContext = null;
+          const activeVoices = new Map();
 
           const currentCard = computed(() => {
             return cards.value.find((card) => card.id === selectedCardId.value) || cards.value[60];
@@ -523,6 +588,7 @@
           const groupedCards = computed(() => {
             const groups = [];
             cards.value.forEach((card) => {
+              if (card.type === 'pitch' && card.isAccidentalPitch) return;
               let group = groups.find((item) => item.category === card.category);
               if (!group) {
                 group = { category: card.category, cards: [] };
@@ -568,12 +634,84 @@
             showCard(`note-${normalizedMidi}`, source);
           }
 
+          function midiToFrequency(midi) {
+            return 440 * Math.pow(2, (midi - 69) / 12);
+          }
+
+          async function ensureAudioContext() {
+            if (!audioContext) {
+              audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioContext.state === 'suspended') {
+              await audioContext.resume();
+            }
+            return audioContext;
+          }
+
+          async function playNote(midi, velocity = 0.7) {
+            if (!soundEnabled.value) return;
+            const context = await ensureAudioContext();
+            stopNote(midi);
+
+            const now = context.currentTime;
+            const oscillator = context.createOscillator();
+            const gainNode = context.createGain();
+            const filter = context.createBiquadFilter();
+
+            oscillator.type = 'triangle';
+            oscillator.frequency.setValueAtTime(midiToFrequency(midi), now);
+
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(2800, now);
+            filter.Q.setValueAtTime(1, now);
+
+            const peakGain = 0.06 + Math.min(Math.max(velocity, 0), 1) * 0.1;
+            gainNode.gain.setValueAtTime(0.0001, now);
+            gainNode.gain.linearRampToValueAtTime(peakGain, now + 0.02);
+            gainNode.gain.exponentialRampToValueAtTime(Math.max(peakGain * 0.72, 0.0001), now + 0.14);
+
+            oscillator.connect(filter);
+            filter.connect(gainNode);
+            gainNode.connect(context.destination);
+
+            oscillator.start(now);
+            activeVoices.set(midi, { oscillator, gainNode });
+          }
+
+          function stopNote(midi) {
+            const voice = activeVoices.get(midi);
+            if (!voice || !audioContext) return;
+
+            const now = audioContext.currentTime;
+            voice.gainNode.gain.cancelScheduledValues(now);
+            voice.gainNode.gain.setValueAtTime(Math.max(voice.gainNode.gain.value, 0.0001), now);
+            voice.gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
+            voice.oscillator.stop(now + 0.14);
+            activeVoices.delete(midi);
+          }
+
+          function stopAllNotes() {
+            [...activeVoices.keys()].forEach((midi) => stopNote(midi));
+          }
+
+          async function toggleSound() {
+            soundEnabled.value = !soundEnabled.value;
+            if (soundEnabled.value) {
+              await ensureAudioContext();
+              return;
+            }
+            stopAllNotes();
+          }
+
           function handleMidiMessage(message) {
             const [command, note, velocity] = message.data;
             const status = command & 0xf0;
             if (status === 0x90 && velocity > 0) {
               showMidiCard(note, 'midi');
+              playNote(note, velocity / 127);
+              return;
             }
+            if (status === 0x80 || (status === 0x90 && velocity === 0)) stopNote(note);
           }
 
           async function connectMidi() {
@@ -742,7 +880,16 @@
             showMidiCard(60, 'manual');
             window.addEventListener('keydown', (event) => {
               if (event.repeat || !(event.code in keyboardMap)) return;
-              showMidiCard(keyboardMap[event.code], 'keyboard');
+              const midi = keyboardMap[event.code];
+              activeKeyboardNotes.set(event.code, midi);
+              showMidiCard(midi, 'keyboard');
+              playNote(midi, 0.8);
+            });
+            window.addEventListener('keyup', (event) => {
+              if (!(event.code in keyboardMap)) return;
+              const midi = activeKeyboardNotes.get(event.code);
+              if (typeof midi === 'number') stopNote(midi);
+              activeKeyboardNotes.delete(event.code);
             });
           });
 
@@ -755,6 +902,7 @@
             isFlipped,
             midiStatus,
             midiLabel,
+            soundEnabled,
             history,
             pulse,
             contactSent,
@@ -765,6 +913,7 @@
             captchaAnswer,
             contactError,
             connectMidi,
+            toggleSound,
             previousCard,
             nextCard,
             randomCard,

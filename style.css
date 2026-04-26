@@ -141,6 +141,12 @@ h1 {
   background: rgba(68, 215, 210, 0.24);
 }
 
+.icon-button.is-active {
+  border-color: rgba(68, 215, 210, 0.7);
+  background: rgba(68, 215, 210, 0.24);
+  color: #fff7ef;
+}
+
 .icon-button:disabled {
   cursor: wait;
   opacity: 0.6;
@@ -547,11 +553,21 @@ h1 {
   left: 18px;
   min-width: 48px;
   min-height: 48px;
+  padding: 8px 10px;
   display: grid;
   place-items: center;
+  white-space: pre-line;
+  text-align: center;
   border: 2px solid var(--ink);
   color: var(--ink);
   font-weight: 800;
+  line-height: 1.05;
+}
+
+.corner--pitch {
+  min-width: 86px;
+  min-height: 74px;
+  font-size: 0.84rem;
 }
 
 .staff-notation {
@@ -592,15 +608,6 @@ h1 {
   text-anchor: middle;
 }
 
-.secondary-accidental {
-  font-size: 42px;
-}
-
-.secondary-note-head,
-.secondary-note-stem {
-  opacity: 0.9;
-}
-
 .octave-mark text {
   fill: var(--ink);
   font-size: 22px;
@@ -634,14 +641,33 @@ h1 {
 }
 
 .theory-symbol.plain-symbol {
-  border: 0;
-  background:
-    radial-gradient(circle at 50% 50%, rgba(68, 215, 210, 0.16), transparent 58%),
-    rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(17, 19, 31, 0.12);
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .theory-symbol.plain-symbol span {
   font-size: clamp(7rem, 22vw, 12rem);
+}
+
+.theory-symbol.clef-symbol span {
+  font-family: "Noto Music", "Segoe UI Symbol", "Arial Unicode MS", serif;
+  font-size: clamp(6rem, 18vw, 9.2rem);
+}
+
+.theory-symbol.term-symbol span,
+.theory-symbol.dynamic-symbol span {
+  font-family: "Times New Roman", Georgia, serif;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.theory-symbol.term-symbol span {
+  font-size: clamp(3.2rem, 10vw, 5rem);
+}
+
+.theory-symbol.dynamic-symbol span {
+  font-size: clamp(5rem, 16vw, 7rem);
+  font-style: italic;
 }
 
 .theory-symbol span {
@@ -665,12 +691,40 @@ h1 {
 
 .pitch-title {
   display: grid;
-  gap: 6px;
+  gap: 10px;
+  width: min(100%, 13ch);
   line-height: 1.08;
+  text-align: center;
 }
 
 .pitch-title span {
   display: block;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.pitch-line--note {
+  font-size: clamp(2rem, 6vw, 3.8rem);
+  line-height: 1.02;
+}
+
+.pitch-line--solfege {
+  font-size: clamp(2rem, 6vw, 3.55rem);
+  line-height: 1.08;
+}
+
+.pitch-title--accidental {
+  gap: 12px;
+  width: min(100%, 11ch);
+}
+
+.pitch-title--accidental .pitch-line--note {
+  font-size: clamp(1.65rem, 4.8vw, 2.85rem);
+}
+
+.pitch-title--accidental .pitch-line--solfege {
+  font-size: clamp(1.55rem, 4.5vw, 2.65rem);
+  line-height: 1.16;
 }
 
 .fallback-card p {
