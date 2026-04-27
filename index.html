@@ -4,6 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Rhythm Note Verse</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Music&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -311,7 +314,8 @@
         theory('theory-quarter-note', '音符時值', '四分音符', '♩', '一拍', '實心符頭加符桿。', '在 4/4 拍中通常數一拍。', '大多數初學節奏的基本單位。', 'plain-symbol'),
         theory('theory-eighth-note', '音符時值', '八分音符', '♪', '半拍', '實心符頭、符桿，加一條符尾。', '兩個八分音符等於一個四分音符。', '數作 1-and。', 'plain-symbol'),
         theory('theory-sixteenth-note', '音符時值', '十六分音符', '𝅘𝅥𝅯', '四分之一拍', '實心符頭、符桿，加兩條符尾。', '四個十六分音符等於一個四分音符。', '數作 1-e-and-a。', 'plain-symbol'),
-        theory('theory-dotted-note', '音符時值', '附點記號', '·', '延長一半', '附點寫在音符右邊。', '附點會增加原本時值的一半。', '二分音符加附點等於三拍。', 'plain-symbol'),
+        theory('theory-dotted-half-note', '音符時值', '附點二分音符', '𝅗𝅥.', '三拍', '二分音符右邊加一個附點。', '附點會增加原本時值的一半，所以二分音符兩拍加一拍變成三拍。', '看到空心符頭加符桿再加點，就是三拍。', 'plain-symbol'),
+        theory('theory-dotted-quarter-note', '音符時值', '附點四分音符', '♩.', '一拍半', '四分音符右邊加一個附點。', '附點會增加半拍，所以四分音符一拍變成一拍半。', '常和八分音符一起組成一拍半加半拍。', 'plain-symbol'),
         theory('theory-whole-rest', '休止符', '全休止符', '𝄻', '休四拍', '掛在第四線下方的黑色長方形。', '通常休止整個小節或四拍。', '全休止符像帽子倒掛。', 'plain-symbol'),
         theory('theory-half-rest', '休止符', '二分休止符', '𝄼', '休兩拍', '坐在第三線上方的黑色長方形。', '通常休止兩拍。', '二分休止符像帽子放在線上。', 'plain-symbol'),
         theory('theory-quarter-rest', '休止符', '四分休止符', '𝄽', '休一拍', '像彎折的閃電形。', '在 4/4 拍中通常休一拍。', '看到它就安靜一拍。', 'plain-symbol'),
@@ -654,28 +658,41 @@
             stopNote(midi);
 
             const now = context.currentTime;
-            const oscillator = context.createOscillator();
+            const frequency = midiToFrequency(midi);
             const gainNode = context.createGain();
             const filter = context.createBiquadFilter();
+            const oscillators = [
+              { osc: context.createOscillator(), type: 'sawtooth', ratio: 1, detune: -4, level: 0.62 },
+              { osc: context.createOscillator(), type: 'triangle', ratio: 2, detune: 3, level: 0.24 },
+              { osc: context.createOscillator(), type: 'sine', ratio: 3, detune: 0, level: 0.14 },
+            ];
 
-            oscillator.type = 'triangle';
-            oscillator.frequency.setValueAtTime(midiToFrequency(midi), now);
+            oscillators.forEach(({ osc, type, ratio, detune, level }) => {
+              const oscillator = osc;
+              const partialGain = context.createGain();
+              oscillator.type = type;
+              oscillator.frequency.setValueAtTime(frequency * ratio, now);
+              oscillator.detune.setValueAtTime(detune, now);
+              partialGain.gain.setValueAtTime(level, now);
+              oscillator.connect(partialGain);
+              partialGain.connect(filter);
+            });
 
             filter.type = 'lowpass';
-            filter.frequency.setValueAtTime(2800, now);
-            filter.Q.setValueAtTime(1, now);
+            filter.frequency.setValueAtTime(1900 + Math.min(Math.max(velocity, 0), 1) * 1200, now);
+            filter.Q.setValueAtTime(0.9, now);
 
-            const peakGain = 0.06 + Math.min(Math.max(velocity, 0), 1) * 0.1;
+            const peakGain = 0.045 + Math.min(Math.max(velocity, 0), 1) * 0.075;
             gainNode.gain.setValueAtTime(0.0001, now);
-            gainNode.gain.linearRampToValueAtTime(peakGain, now + 0.02);
-            gainNode.gain.exponentialRampToValueAtTime(Math.max(peakGain * 0.72, 0.0001), now + 0.14);
+            gainNode.gain.linearRampToValueAtTime(peakGain, now + 0.008);
+            gainNode.gain.exponentialRampToValueAtTime(Math.max(peakGain * 0.55, 0.0001), now + 0.09);
+            gainNode.gain.exponentialRampToValueAtTime(Math.max(peakGain * 0.18, 0.0001), now + 0.55);
 
-            oscillator.connect(filter);
             filter.connect(gainNode);
             gainNode.connect(context.destination);
 
-            oscillator.start(now);
-            activeVoices.set(midi, { oscillator, gainNode });
+            oscillators.forEach(({ osc }) => osc.start(now));
+            activeVoices.set(midi, { oscillators: oscillators.map(({ osc }) => osc), gainNode });
           }
 
           function stopNote(midi) {
@@ -685,8 +702,8 @@
             const now = audioContext.currentTime;
             voice.gainNode.gain.cancelScheduledValues(now);
             voice.gainNode.gain.setValueAtTime(Math.max(voice.gainNode.gain.value, 0.0001), now);
-            voice.gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.12);
-            voice.oscillator.stop(now + 0.14);
+            voice.gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+            voice.oscillators.forEach((oscillator) => oscillator.stop(now + 0.2));
             activeVoices.delete(midi);
           }
 

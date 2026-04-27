@@ -602,6 +602,7 @@ h1 {
 
 .accidental {
   fill: var(--ink);
+  font-family: "Noto Music", "Segoe UI Symbol", "Arial Unicode MS", serif;
   font-size: 48px;
   font-weight: 800;
   dominant-baseline: middle;
@@ -652,6 +653,10 @@ h1 {
 .theory-symbol.clef-symbol span {
   font-family: "Noto Music", "Segoe UI Symbol", "Arial Unicode MS", serif;
   font-size: clamp(6rem, 18vw, 9.2rem);
+}
+
+.theory-symbol:not(.term-symbol):not(.dynamic-symbol) span {
+  font-family: "Noto Music", "Segoe UI Symbol", "Arial Unicode MS", serif;
 }
 
 .theory-symbol.term-symbol span,
